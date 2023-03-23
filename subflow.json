@@ -1,0 +1,221 @@
+{
+    "id": "f5489383c48b7546",
+    "type": "subflow",
+    "name": "[AI] Detect-mcv",
+    "info": "Run prediction on input image using Tensorflow.js model trained and exported from Microsoft Custom Vision.\n\nInput image must be image buffer in **'msg.payload'**.\n\nOutputs:\n- Prediction result\n- Manifest\n- Metadata\n\nExcepts following content in model folder:\n- model.json (Tensorflow.js model)\n- weights.bin (Tensorflow.js model)\n- cvexport.manifest (Custom Vision manifest file)\n- variables (folder that might include files for saved model)\n- labels.txt (labels, one label on each row)\n- metadata_properties.json (metadata of used model in JSON-format)\n\nSupported image formats:\n- JPG\n\nSupports:\n- TensorFlow.js object detection model exported from Microsoft Custom Vision (General compact S1 domain)\n\nTo train and export a model, please look:\n\nhttps://www.customvision.ai/\n\nDependencies:\n- https://www.npmjs.com/package/@microsoft/customvision-tfjs-node\n- https://flows.nodered.org/node/node-red-contrib-image-info\n",
+    "category": "Tequ-API Client",
+    "in": [
+        {
+            "x": 80,
+            "y": 80,
+            "wires": [
+                {
+                    "id": "4a3260e906997fa4"
+                }
+            ]
+        }
+    ],
+    "out": [
+        {
+            "x": 960,
+            "y": 80,
+            "wires": [
+                {
+                    "id": "b2e07a6cce1a9b6e",
+                    "port": 0
+                }
+            ]
+        }
+    ],
+    "env": [
+        {
+            "name": "model_folder",
+            "type": "str",
+            "value": "C:\\Users\\juha.autioniemi\\.node-red\\test",
+            "ui": {
+                "type": "input",
+                "opts": {
+                    "types": [
+                        "str"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "threshold",
+            "type": "num",
+            "value": "0.50",
+            "ui": {
+                "type": "spinner",
+                "opts": {
+                    "min": 0,
+                    "max": 1
+                }
+            }
+        },
+        {
+            "name": "model_id",
+            "type": "str",
+            "value": "tequ-hissitproto-v1"
+        }
+    ],
+    "meta": {
+        "module": "tequ-node-red-object-detection-mcv",
+        "type": "tequ-node-red-object-detection-mcv",
+        "version": "0.0.1",
+        "author": "juha.autioniemi@lapinamk.fi",
+        "desc": "Detect objects from image using Tensorflow.js model trained in Microsoft Azure Custom Vision service.",
+        "license": "MIT"
+    },
+    "color": "#FFCC66",
+    "inputLabels": [
+        "input image buffer"
+    ],
+    "outputLabels": [
+        "prediction result"
+    ],
+    "icon": "node-red/status.svg",
+    "status": {
+        "x": 900,
+        "y": 160,
+        "wires": [
+            {
+                "id": "e220d68131d1bea3",
+                "port": 0
+            }
+        ]
+    },
+    "flow": [
+        {
+            "id": "b2e07a6cce1a9b6e",
+            "type": "function",
+            "z": "f5489383c48b7546",
+            "name": "customvision",
+            "func": "function addProps(obj, arr, val) {\n    if (typeof arr == 'string')\n        arr = arr.split(\".\");\n\n    obj[arr[0]] = obj[arr[0]] || {};\n\n    var tmpObj = obj[arr[0]];\n\n    if (arr.length > 1) {\n        arr.shift();\n        addProps(tmpObj, arr, val);\n    }\n    else\n        obj[arr[0]] = val;\n\n    return obj;\n\n}\n\nlet start = Date.now();\nvar imageBuffer = msg.payload;\nvar results = [];\nvar labels = context.get(\"labels\");\nvar threshold = msg.threshold;\n\nlet image_width;\nlet image_height;\n\ntry { image_width = msg.data.properties.object.data.width; } catch (e) { image_width = msg.width}\ntry { image_height = msg.data.properties.object.data.height; } catch (e) { image_height = msg.width }\n\nvar newResult;\nvar result_message;\n\n//Make prediction on input image\nlet model = context.get(\"model\")\nlet result = await model.executeAsync(imageBuffer);\n\nlet end = Date.now();\nlet diff = end - start;\n\n//Map result to JSON and connect label names\nvar bboxes = result[0];\nvar scores = result[1];\nvar label_idxs = result[2];\n\nfor(var i=0;i<bboxes.length;i++){\n    if(scores[i] >= threshold){\n        newResult = {\n            \"bbox\":[\n                bboxes[i][0] * image_width,\n                bboxes[i][1] * image_height,\n                (bboxes[i][2] - bboxes[i][0]) * image_width,\n                (bboxes[i][3] - bboxes[i][1]) * image_height\n            ],\n            \"class\":labels[label_idxs[i]],\n            \"label\":labels[label_idxs[i]],\n            \"score\":scores[i]\n        }\n        results.push(newResult)\n    }\n}\n\naddProps(msg,\"data.properties.computer_vision.result\",results)\naddProps(msg, \"data.properties.computer_vision.type\", \"object detection\")\naddProps(msg, \"data.properties.computer_vision.threshold\", threshold)\naddProps(msg, \"data.properties.computer_vision.inference_time\", diff);\naddProps(msg, \"data.properties.computer_vision.model\", env.get(\"model_id\"));\naddProps(msg, \"data.properties.computer_vision.metadata\", context.get(\"metadata\"));\naddProps(msg, \"data.properties.computer_vision.manifest\", context.get(\"manifest\"));\naddProps(msg, \"data.properties.computer_vision.labels\", context.get(\"labels\"));\n\n/*\nmsg.data.properties.computer_vision.result = results;\nmsg.data.properties.computer_vision.type = \"object detection\";\nmsg.data.properties.computer_vision.threshold = threshold;\nmsg.data.properties.computer_vision.inference_time = diff;\nmsg.data.properties.computer_vision.model = env.get(\"model_id\");\nmsg.data.properties.computer_vision.metadata = context.get(\"metadata\");\nmsg.data.properties.computer_vision.manifest = context.get(\"manifest\");\nmsg.data.properties.computer_vision.labels = context.get(\"labels\");\n*/\nmsg.payload = imageBuffer;\n\ndelete msg.width;\ndelete msg.height;\ndelete msg.type;\ndelete msg.mimetype;\ndelete msg.filename;\n\nnode.status({ fill: \"blue\", shape: \"dot\", text: diff + \" ms\" });  \nreturn msg;",
+            "outputs": 1,
+            "noerr": 0,
+            "initialize": "// Code added here will be run once\n// whenever the node is started.\nconst platform = os.platform()\nnode.warn(platform)\nlet model_folder;\nlet manifest_file;\nlet LabelFileName;\nlet ModelFileName;\nlet MetadataPropsFileName;\nlet labelArray;\n\nif(platform == \"win32\"){\n    model_folder = env.get(\"model_folder\")\n    manifest_file = model_folder+\"\\\\\"+\"cvexport.manifest\"\n}\nelse{\n    model_folder = env.get(\"model_folder\")\n    manifest_file = model_folder+\"/\"+\"cvexport.manifest\"\n}\n\nif (context.get(\"model\") === undefined) {\n    try {\n        context.set(\"manifest\",JSON.parse(fs.readFileSync(manifest_file, 'utf8')))\n    } catch (err) {\n        node.error(err)\n    }\n}\n\nif(platform == \"win32\"){\n    LabelFileName           = model_folder+\"\\\\\"+context.get(\"manifest\")[\"LabelFileName\"]\n    ModelFileName           = \"file://\"+model_folder+\"\\\\\"+\"model.json\"\n    MetadataPropsFileName   = model_folder+\"\\\\\"+context.get(\"manifest\")[\"MetadataPropsFileName\"]\n}\nelse{\n    LabelFileName           = model_folder+\"/\"+context.get(\"manifest\")[\"LabelFileName\"]\n    ModelFileName           = \"file://\"+model_folder+\"/\"+\"model.json\"\n    MetadataPropsFileName   = model_folder+\"/\"+context.get(\"manifest\")[\"MetadataPropsFileName\"]\n}\n\nif (context.get(\"labels\") === undefined) {\n    try {\n        var labels = fs.readFileSync(LabelFileName, 'utf8')\n        labelArray = labels.split(\"\\n\")\n        context.set(\"labels\",labelArray)\n        \n    } catch (err) {\n        node.warn(err)\n        node.error(\"Error reading labels: \"+err.message,err)\n    }\n}\n\nif (context.get(\"metadata\") === undefined) {\n    try {\n        context.set(\"metadata\",JSON.parse(fs.readFileSync(MetadataPropsFileName, 'utf8')))\n    } catch (err) {\n        node.error(\"Error reading metadata: \"+err.message,err)\n    }\n}\n\nif (context.get(\"model\") === undefined) {\n    try {\n        node.status({fill:\"green\",shape:\"dot\",text:\"Loading model...\"});\n        const model = new microsoftCustomvisionTfjsNode.ObjectDetectionModel();\n        await model.loadModelAsync(ModelFileName);\n        context.set(\"model\", model)\n        node.status({fill:\"green\",shape:\"dot\",text:\"Object detection ready.\"});\n    } catch (err) {\n        node.status({fill:\"red\",shape:\"dot\",text:err});\n        node.error(\"Error reading model: \" + err.message, err)\n    }\n}",
+            "finalize": "",
+            "libs": [
+                {
+                    "var": "microsoftCustomvisionTfjsNode",
+                    "module": "@microsoft/customvision-tfjs-node"
+                },
+                {
+                    "var": "fs",
+                    "module": "fs"
+                },
+                {
+                    "var": "os",
+                    "module": "os"
+                }
+            ],
+            "x": 750,
+            "y": 80,
+            "wires": [
+                []
+            ]
+        },
+        {
+            "id": "c43ad9454285328e",
+            "type": "function",
+            "z": "f5489383c48b7546",
+            "name": "Set threshold",
+            "func": "//Define threshold\nvar threshold = 0;\n\nlet global_settings = global.get(\"settings\") || undefined\nvar thresholdType = \"\"\n\nif(global_settings !== undefined){\n    if(\"threshold\" in global_settings){\n        threshold = global_settings[\"threshold\"]\n        thresholdType = \"global\";\n    }\n}\n\nelse if(\"threshold\" in msg){\n    threshold = msg.threshold;\n    thresholdType = \"msg\";\n    if(threshold < 0){\n        threshold = 0\n    }\n    else if(threshold > 1){\n        threshold = 1\n    }\n}\n\nelse{\n    try{\n        threshold = env.get(\"threshold\");\n        thresholdType = \"env\";\n    }\n    catch(err){\n        threshold = 0.5\n        thresholdType = \"default\";\n    }\n}\n\nif(threshold == undefined){\n    threshold = 0\n}\n\nmsg.thresholdType = thresholdType;\nmsg.threshold = threshold;\nreturn msg;",
+            "outputs": 1,
+            "noerr": 0,
+            "initialize": "",
+            "finalize": "",
+            "libs": [],
+            "x": 390,
+            "y": 80,
+            "wires": [
+                [
+                    "6e8f2c273a8e429b"
+                ]
+            ]
+        },
+        {
+            "id": "4a3260e906997fa4",
+            "type": "function",
+            "z": "f5489383c48b7546",
+            "name": "isBuffer?",
+            "func": "let timestamp = new Date().toISOString();\nvar image = msg.payload;\n\nif(Buffer.isBuffer(image)){\n    return msg;\n}\nelse{\n    node.error(\"msg.payload is not an image buffer\",msg)\n    node.status({fill:\"red\",shape:\"dot\",text:timestamp + \" msg.payload is not an image buffer\"});  \n}",
+            "outputs": 1,
+            "noerr": 0,
+            "initialize": "",
+            "finalize": "",
+            "libs": [],
+            "x": 220,
+            "y": 80,
+            "wires": [
+                [
+                    "c43ad9454285328e"
+                ]
+            ]
+        },
+        {
+            "id": "e220d68131d1bea3",
+            "type": "status",
+            "z": "f5489383c48b7546",
+            "name": "",
+            "scope": [
+                "b2e07a6cce1a9b6e",
+                "70f48281642455fa"
+            ],
+            "x": 760,
+            "y": 160,
+            "wires": [
+                []
+            ]
+        },
+        {
+            "id": "6e8f2c273a8e429b",
+            "type": "image-info",
+            "z": "f5489383c48b7546",
+            "name": "",
+            "x": 570,
+            "y": 80,
+            "wires": [
+                [
+                    "b2e07a6cce1a9b6e"
+                ]
+            ]
+        },
+        {
+            "id": "7c0e65c7e9eee788",
+            "type": "subflow:f5489383c48b7546",
+            "z": "7b248573a2bd55b0",
+            "name": "",
+            "env": [
+                {
+                    "name": "model_folder",
+                    "value": "C:\\Users\\juha.autioniemi\\.node-red\\customvision",
+                    "type": "str"
+                },
+                {
+                    "name": "threshold",
+                    "value": "0.1",
+                    "type": "num"
+                },
+                {
+                    "name": "model_id",
+                    "value": "tequ-hissiproto-v1",
+                    "type": "str"
+                },
+                {
+                    "name": "image_width_cm",
+                    "value": "100",
+                    "type": "num"
+                }
+            ],
+            "x": 460,
+            "y": 160,
+            "wires": [
+                [
+                    "13ae01d7fbd105ae"
+                ]
+            ]
+        }
+    ]
+}
