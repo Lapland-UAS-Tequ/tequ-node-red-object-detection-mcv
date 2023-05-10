@@ -7,7 +7,7 @@ Detect objects from image using Tensorflow.js model trained in Microsoft Azure C
 
 Run the following command in your Node-RED user directory - typically `~/.node-red`
 
-        npm install tequ-node-red-object-detection-mcv
+        npm install Lapland-UAS-Tequ/tequ-node-red-object-detection-mcv
 
 ## Information
 
